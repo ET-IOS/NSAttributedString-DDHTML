@@ -33,33 +33,43 @@
 
 @implementation NSAttributedString (DDHTML)
 
-+ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString
++ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString  linkColor:(UIColor *)linkColor highlighterColor:(UIColor*)highlightColor highlighterFont:(UIFont *)highlighterFont
 {
     UIFont *preferredBodyFont = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     
     return [self attributedStringFromHTML:htmlString
                                normalFont:preferredBodyFont
                                  boldFont:[UIFont boldSystemFontOfSize:preferredBodyFont.pointSize]
-                               italicFont:[UIFont italicSystemFontOfSize:preferredBodyFont.pointSize]];
+                               italicFont:[UIFont italicSystemFontOfSize:preferredBodyFont.pointSize]
+                                linkColor:linkColor
+                         highlighterColor:highlightColor
+                          highlighterFont:highlighterFont];
 }
 
-+ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont
++ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont  linkColor:(UIColor *)linkColor highlighterColor:(UIColor*)highlightColor highlighterFont:(UIFont *)highlighterFont
 {
     return [self attributedStringFromHTML:htmlString
                                normalFont:[UIFont preferredFontForTextStyle:UIFontTextStyleBody]
                                  boldFont:boldFont
-                               italicFont:italicFont];
+                               italicFont:italicFont
+                                linkColor:linkColor
+                         highlighterColor:highlightColor
+                          highlighterFont:(UIFont *)highlighterFont];
+
 }
-+ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString normalFont:(UIFont *)normalFont boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont
++ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString normalFont:(UIFont *)normalFont boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont linkColor:(UIColor *)linkColor highlighterColor:(UIColor*)highlightColor highlighterFont:(UIFont *)highlighterFont
 {
     return [self attributedStringFromHTML:htmlString
                                normalFont:normalFont
                                  boldFont:boldFont
                                italicFont:italicFont
-                                 imageMap:@{}];
+                                linkColor:linkColor
+                                 imageMap:@{}
+                         highlighterColor:highlightColor
+                          highlighterFont:(UIFont *)highlighterFont];
 }
 
-+ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString normalFont:(UIFont *)normalFont boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont imageMap:(NSDictionary<NSString *, UIImage *> *)imageMap
++ (NSAttributedString *)attributedStringFromHTML:(NSString *)htmlString normalFont:(UIFont *)normalFont boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont linkColor:(UIColor *)linkColor imageMap:(NSDictionary<NSString *, UIImage *> *)imageMap highlighterColor:(UIColor*)highlightColor highlighterFont:(UIFont *)highlighterFont
 {
     // Parse HTML string as XML document using UTF-8 encoding
     NSData *documentData = [htmlString dataUsingEncoding:NSUTF8StringEncoding];
@@ -73,7 +83,7 @@
     
     xmlNodePtr currentNode = document->children;
     while (currentNode != NULL) {
-        NSAttributedString *childString = [self attributedStringFromNode:currentNode normalFont:normalFont boldFont:boldFont italicFont:italicFont imageMap:imageMap];
+        NSAttributedString *childString = [self attributedStringFromNode:currentNode normalFont:normalFont boldFont:boldFont italicFont:italicFont linkColor:linkColor imageMap:imageMap highlighterColor:highlightColor highlighterFont:highlighterFont];
         [finalAttributedString appendAttributedString:childString];
         
         currentNode = currentNode->next;
@@ -84,7 +94,7 @@
     return finalAttributedString;
 }
 
-+ (NSAttributedString *)attributedStringFromNode:(xmlNodePtr)xmlNode normalFont:(UIFont *)normalFont boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont imageMap:(NSDictionary<NSString *, UIImage *> *)imageMap
++ (NSAttributedString *)attributedStringFromNode:(xmlNodePtr)xmlNode normalFont:(UIFont *)normalFont boldFont:(UIFont *)boldFont italicFont:(UIFont *)italicFont linkColor:(UIColor *)linkColor imageMap:(NSDictionary<NSString *, UIImage *> *)imageMap highlighterColor:(UIColor*)highlightColor highlighterFont:(UIFont *)highlighterFont
 {
     NSMutableAttributedString *nodeAttributedString = [[NSMutableAttributedString alloc] init];
     
@@ -96,7 +106,7 @@
     // Handle children
     xmlNodePtr currentNode = xmlNode->children;
     while (currentNode != NULL) {
-        NSAttributedString *childString = [self attributedStringFromNode:currentNode normalFont:normalFont boldFont:boldFont italicFont:italicFont imageMap:imageMap];
+        NSAttributedString *childString = [self attributedStringFromNode:currentNode normalFont:normalFont boldFont:boldFont italicFont:italicFont linkColor:linkColor imageMap:imageMap highlighterColor:highlightColor highlighterFont:highlighterFont];
         [nodeAttributedString appendAttributedString:childString];
         
         currentNode = currentNode->next;
@@ -133,7 +143,7 @@
         }
         
         // Italic Tag
-        else if (strncmp("i", (const char *)xmlNode->name, strlen((const char *)xmlNode->name)) == 0) {
+        else if (strncmp("i", (const char *)xmlNode->name, strlen((const char *)xmlNode->name)) == 0 || strncmp("em", (const char *)xmlNode->name, strlen((const char *)xmlNode->name)) == 0) {
             if (italicFont) {
                 [nodeAttributedString addAttribute:NSFontAttributeName value:italicFont range:nodeAttributedStringRange];
             }
@@ -302,7 +312,12 @@
                 paragraphStyle.tailIndent = [attributeDictionary[@"tailindent"] doubleValue];
             }
             
-            [nodeAttributedString addAttribute:NSParagraphStyleAttributeName value:paragraphStyle range:nodeAttributedStringRange];
+            if(nodeAttributedString.length > 0){
+                [nodeAttributedString insertAttributedString:[[NSAttributedString alloc] initWithString:@"\n"] atIndex:0];
+                [nodeAttributedString appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n"]];
+            }
+            
+            [nodeAttributedString addAttribute:NSParagraphStyleAttributeName value:paragraphStyle range:NSMakeRange(0, nodeAttributedString.length)];
         }
         
         // Links
@@ -313,7 +328,13 @@
             {
                 NSString *title = [NSString stringWithCString:(const char *)value encoding:NSUTF8StringEncoding];
                 NSString *link = attributeDictionary[@"href"];
-                [nodeAttributedString addAttribute:NSLinkAttributeName value:link range:NSMakeRange(0, title.length)];
+                link = [link stringByReplacingOccurrencesOfString:@" " withString:@"%20"];
+               
+                if(link && link.length>0) {
+                    [nodeAttributedString addAttribute:NSLinkAttributeName value:link range:NSMakeRange(0, title.length)];
+                    [nodeAttributedString addAttribute:NSFontAttributeName value:boldFont range:NSMakeRange(0, title.length)];
+                }
+                xmlFree(value);
             }
         }
         
@@ -346,6 +367,41 @@
                     }
                 }
             #endif
+        }
+        else if ((strncmp("sup", (const char *)xmlNode->name, strlen((const char *)xmlNode->name)) == 0))
+        {
+            CGFloat fontSize = normalFont.pointSize;
+            float requiredSize = fontSize/2;
+            NSRange range = NSMakeRange(0, nodeAttributedString.length);
+            
+            NSDictionary *attributes = @{NSFontAttributeName : [normalFont fontWithSize:requiredSize], NSBaselineOffsetAttributeName : [NSNumber numberWithFloat:requiredSize]};
+            [nodeAttributedString addAttributes:attributes range:range];
+        }
+        else if ((strncmp("sub", (const char *)xmlNode->name, strlen((const char *)xmlNode->name)) == 0))
+        {
+            CGFloat fontSize = normalFont.pointSize;
+            NSInteger requiredSize = fontSize/2;
+            NSRange range = NSMakeRange(0, nodeAttributedString.length);
+            
+            NSDictionary *attributes = @{NSFontAttributeName : [normalFont fontWithSize:requiredSize], NSBaselineOffsetAttributeName : [NSNumber numberWithFloat:(-requiredSize)]};
+            [nodeAttributedString addAttributes:attributes range:range];
+        }
+        else if ((strncmp("highlighter", (const char *)xmlNode->name, strlen((const char *)xmlNode->name)) == 0))
+        {
+            NSRange range = NSMakeRange(0, nodeAttributedString.length);
+            
+            UIColor * tempHighlighterColor = [UIColor colorWithRed:255/255.0f green:230/255.0f blue:230/255.0f alpha:1.0f];
+            if (highlightColor){
+                tempHighlighterColor = highlightColor;
+            }
+            
+            UIFont * tempHighlighterFont = boldFont;
+            if (highlighterFont){
+                tempHighlighterFont = highlighterFont;
+            }
+            
+            NSDictionary *attributes = @{NSBackgroundColorAttributeName :tempHighlighterColor, NSFontAttributeName :tempHighlighterFont};
+            [nodeAttributedString addAttributes:attributes range:range];
         }
     }
     
